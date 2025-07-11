@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Multi Pic OCR Msg Sender (Dark FINAL Mobile Correction)</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; background: #121212; color: #f5f5f5; }
+    input[type="file"] { margin-bottom: 10px; }
+    button { padding: 10px 20px; margin: 10px 0; font-size: 16px; cursor: pointer; background: #28a745; color: white; border: none; border-radius: 5px; }
+    button:hover { background: #218838; }
+    .output { background: #1e1e1e; padding: 10px; margin-bottom: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.5); }
+    .output p { margin: 5px 0; white-space: pre-line; }
+    h2 { color: #00e676; }
+    a button { background: #007bff; }
+    a button:hover { background: #0069d9; }
+    pre { background: #333; padding: 10px; border-radius: 5px; overflow-x: auto; }
+  </style>
+</head>
+<body>
+
+<h2>📤 Multi Pic OCR Converter + WhatsApp Sender (Dark FINAL Mobile Correction)</h2>
+
+<input type="file" id="images" accept="image/*" multiple />
+<br>
+<button onclick="processImages()">Convert to Text</button>
+
+<div id="results"></div>
+
+<script>
+async function processImages() {
+  const files = document.getElementById('images').files;
+  const resultsDiv = document.getElementById('results');
+  resultsDiv.innerHTML = "⏳ Processing... please wait<br><br>";
+
+  for (let file of files) {
+    let formData = new FormData();
+    formData.append("apikey", "K83921575388957");
+    formData.append("language", "eng");
+    formData.append("isOverlayRequired", "false");
+    formData.append("file", file);
+
+    let response = await fetch("https://api.ocr.space/parse/image", {
+      method: "POST",
+      body: formData
+    });
+
+    let data = await response.json();
+    let text = data.ParsedResults[0].ParsedText;
+
+    // DEBUG: Show raw OCR text
+    resultsDiv.innerHTML += `<div class="output"><h4>📝 Raw OCR Text:</h4><pre>${text}</pre></div>`;
+
+    // Split text into lines
+    let lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+
+    // Name detection: first line starting with alphabet
+    let name = "Customer";
+    for (let l of lines) {
+      if (/^[A-Za-z]/.test(l)) {
+        name = l;
+        break;
+      }
+    }
+
+    // Mobile detection: remove +91 or 0, correct 3 -> 8, validate 10 digit starting 6-9
+    let mobileMatches = text.match(/(?:\+91|0)?\d{10}/g);
+    let mobiles = [];
+    if (mobileMatches) {
+      mobiles = mobileMatches.map(m => {
+        m = m.replace(/^(\+91|0)/, '');
+        // If starts with 3 and 10 digits, correct to 8
+        if (/^3\d{9}$/.test(m)) {
+          m = '8' + m.slice(1);
+        }
+        return m;
+      }).filter(m => /^[6-9]\d{9}$/.test(m) && m !== "7983624797");
+    }
+    if (mobiles.length === 0) mobiles = ["Not Found"];
+
+    // Order ID detection: pattern like #20518603
+    let orderIdMatch = text.match(/#\d{6,12}/);
+    let orderId = orderIdMatch ? orderIdMatch[0] : "Not Found";
+
+    // AWB detection: robust DTDC logic
+    let awb = "Not Found";
+    let awbMatches = text.match(/\b(7D[A-Z0-9]{9}|70[A-Z0-9]{9}|701[A-Z0-9]{8}|\d{8})\b/g);
+    if (awbMatches) {
+      awb = awbMatches[0];
+      if (/^701/.test(awb) && awb.length === 11) {
+        awb = awb.replace(/^701/, '7D1');
+      } else if (/^70/.test(awb) && awb.length === 11) {
+        awb = awb.replace(/^70/, '7D');
+      } else if (/^\d{8}$/.test(awb)) {
+        awb = '7D1' + awb; // prepend '7D1' to 8 digit codes
+      }
+    }
+
+    let dtdcLink = "https://www.dtdc.in/tracking/shipment-details.aspx";
+
+    // Prepare message for each mobile number
+    mobiles.forEach(mobile => {
+      let plainMsg = `👋 Hi Mr. ${name},
+
+📞 Mobile: ${mobile}
+🆔 Order ID: ${orderId}
+🔢 AWB: ${awb}
+
+🚚 DTDC Tracking:
+Please open the link below and enter your AWB number to track your parcel:
+🔗 ${dtdcLink}
+
+✅ Your parcel has been dispatched successfully.
+Please check the details above for your reference.
+
+🙏 Thank you so much for shopping with us!
+✨ Have a wonderful day ahead.`;
+
+      let waMsg = encodeURIComponent(plainMsg);
+      let waLink = `https://wa.me/91${mobile}?text=${waMsg}`;
+
+      // Display each result with send button
+      resultsDiv.innerHTML += `
+        <div class="output">
+          <p>${plainMsg}</p>
+          <a href="${waLink}" target="_blank">
+            <button>Send WhatsApp to ${mobile}</button>
+          </a>
+        </div>
+      `;
+    });
+  }
+}
+</script>
+
+</body>
+</html>
